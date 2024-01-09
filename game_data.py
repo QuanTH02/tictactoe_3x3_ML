@@ -18,6 +18,14 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, recall_score, f1_score, roc_curve, auc
 import matplotlib.pyplot as plt
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+from sklearn.metrics import (
+    mean_squared_error,
+    accuracy_score,
+    r2_score,
+    mean_absolute_error,
+)
+from sklearn.model_selection import train_test_split
 
 
 def load_agent(file_path):
@@ -239,58 +247,37 @@ train["result"] = df["result"]
 y = train["result"]
 X = train.drop("result", axis=1)
 
-"""
-model = DecisionTreeRegressor()
-model.fit(X, y)"""
 
-
-def eval():
-    # Preprocess the data
+def train():
+    # Split data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
+    # Create and train the model
+    model = DecisionTreeRegressor()
+    model.fit(X_train, y_train)
 
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-
-    # Train the models
-    models = {
-        "Random Forest": RandomForestClassifier(),
-        "Decision Tree": DecisionTreeClassifier(),
-        "SVM": SVC(),
-    }
-
-    for name, model in models.items():
-        model.fit(X_train, y_train)
-
-    # Evaluate the models
-    for name, model in models.items():
+    def evaluate_model(model, X_test, y_test):
+        # Make predictions on the test set
         y_pred = model.predict(X_test)
-        accuracy = accuracy_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1_score = f1_score(y_test, y_pred)
-        print(f"{name} accuracy: {accuracy}")
-        print(f"{name} recall: {recall}")
-        print(f"{name} F1 score: {f1_score}")
-        print()
 
-    # Plot the ROC curves
-    plt.figure()
-    for name, model in models.items():
-        y_pred = model.predict(X_test)
-        fpr, tpr, thresholds = roc_curve(y_test, y_pred)
-        auc = auc(fpr, tpr)
-        plt.plot(fpr, tpr, label=f"{name} (area = {auc:.2f})")
+        # Calculate mean squared error (MSE) as the loss
+        mse_loss = mean_squared_error(y_test, y_pred)
 
-    plt.plot([0, 1], [0, 1], "k--")
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
-    plt.title("Receiver Operating Characteristic")
-    plt.legend(loc="lower right")
-    plt.show()
+        # Calculate R-squared (R^2)
+        r2 = r2_score(y_test, y_pred)
+
+        # Calculate Mean Absolute Error (MAE)
+        mae = mean_absolute_error(y_test, y_pred)
+
+        return mse_loss, r2, mae
+
+    # Evaluate the model
+    loss, r2, mae = evaluate_model(model, X_test, y_test)
+
+    print(f"Mean Squared Error (MSE) Loss: {loss}")
+    print(f"R-squared (R^2): {r2}")
+    print(f"Mean Absolute Error (MAE): {mae}")
 
 
 def getMoveFromPred(preds, empty):
@@ -413,7 +400,6 @@ class TicTacToeAI:
         win_X = 0
         win_O = 0
         for _ in range(n_games):
-            # play_first = random.choice(["X", "O"])
             play_first = "X"
             res = self.simulateGame(play_first=play_first)
             if res == "X":
@@ -679,20 +665,46 @@ def placeMarkDQN(board_state, empty_cells, mark):
 with open("model_5000000.pkl", "rb") as f:
     model = pickle.load(f)
 
+with open("modelrf.pkl", "rb") as f:
+    modelrf = pickle.load(f)
+
+
+def placeMarkRF(board_state, empty_cells, mark):
+    """Predict the result for each possible move"""
+    preds = []
+    empty_index = move_encoder.transform(
+        [toStr(e) for e in empty_cells]
+    )  # transform empty cells to index using encoder
+    for i in empty_index:
+        p = np.reshape(
+            [
+                bs_encoder.transform([toStr(board_state)])[0],
+                mark_encoder.transform([mark])[0],
+                i,
+            ],
+            (1, -1),
+        )
+        preds.append(
+            (modelrf.predict(p), i)
+        )  # predict result for each possible move and store in a list
+    move = getMoveFromPred(preds, empty_cells)
+
+    return move
+
 
 if __name__ == "__main__":
     pygame.init()
     # Để tải lại mô hình
-    n_games = 10000
+    #n_games = 1000
     # eval()
-    # agent = load_agent("save/tictactoe_save_500000.pkl")
-    play_game(model, first_turn=True)
+    # agent = load_agent("tictactoe_save_500000.pkl")
+    play_game(modelrf, first_turn=True)
     pygame.quit()
 
-    """win_X, win_O = TicTacToeAI(placeMark1, placeMark).simulate(n_games)
+    '''win_X, win_O = TicTacToeAI(placeMarkRF, placeMarkMinimax).simulate(n_games)
     print(
         f"Player X won {win_X} out of {n_games} games (win rate = {round((win_X/n_games) * 100, 2)}%)"
     )
     print(
         f"Player O won {win_O} out of {n_games} games (win rate = {round((win_O/n_games) * 100, 2)}%)"
-    )"""
+    )'''
